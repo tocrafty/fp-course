@@ -1,4 +1,4 @@
-require-stack-version: ">= 1.6.1"
+require-stack-version: ">= 2.11.1"
 resolver: stack-snapshot.yaml
 
 packages:
