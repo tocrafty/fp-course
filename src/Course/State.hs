@@ -13,6 +13,7 @@ import Course.Functor
 import Course.Applicative
 import Course.Monad
 import qualified Data.Set as S
+import qualified Data.Char as C (digitToInt)
 
 -- $setup
 -- >>> import Test.QuickCheck.Function
@@ -38,8 +39,7 @@ exec ::
   State s a
   -> s
   -> s
-exec =
-  error "todo: Course.State#exec"
+exec = (snd .) . runState
 
 -- | Run the `State` seeded with `s` and retrieve the resulting value.
 --
@@ -48,8 +48,7 @@ eval ::
   State s a
   -> s
   -> a
-eval =
-  error "todo: Course.State#eval"
+eval = (fst .) . runState
 
 -- | A `State` where the state also distributes into the produced value.
 --
@@ -57,8 +56,7 @@ eval =
 -- (0,0)
 get ::
   State s s
-get =
-  error "todo: Course.State#get"
+get = State $ \x -> (x, x)
 
 -- | A `State` where the resulting state is seeded with the given value.
 --
@@ -67,8 +65,7 @@ get =
 put ::
   s
   -> State s ()
-put =
-  error "todo: Course.State#put"
+put s = State $ const ((), s)
 
 -- | Implement the `Functor` instance for `State s`.
 --
@@ -79,8 +76,8 @@ instance Functor (State s) where
     (a -> b)
     -> State s a
     -> State s b
-  (<$>) =
-    error "todo: Course.State#(<$>)"
+  --(<$>) f sa = State{runState = (\p -> (f(fst p), id(snd p))) . runState sa}
+  (<$>) f sa = State $ (\p -> (f(fst p), id(snd p))) . runState sa
 
 -- | Implement the `Applicative` instance for `State s`.
 --
@@ -97,14 +94,14 @@ instance Applicative (State s) where
   pure ::
     a
     -> State s a
-  pure =
-    error "todo: Course.State pure#instance (State s)"
+  pure a = State{runState = (,) a}
   (<*>) ::
     State s (a -> b)
     -> State s a
-    -> State s b 
-  (<*>) =
-    error "todo: Course.State (<*>)#instance (State s)"
+    -> State s b
+  (<*>) sf sa = State $ \s -> let (f, s') = runState sf s
+                                  (a, s'') = runState sa s'
+                              in (f a, s'')
 
 -- | Implement the `Bind` instance for `State s`.
 --
@@ -118,8 +115,8 @@ instance Monad (State s) where
     (a -> State s b)
     -> State s a
     -> State s b
-  (=<<) =
-    error "todo: Course.State (=<<)#instance (State s)"
+  (=<<) f sa = State $ \s -> let (a, s') = runState sa s in
+                             runState (f a) s'
 
 -- | Find the first element in a `List` that satisfies a given predicate.
 -- It is possible that no element is found, hence an `Optional` result.
@@ -140,8 +137,11 @@ findM ::
   (a -> f Bool)
   -> List a
   -> f (Optional a)
-findM =
-  error "todo: Course.State#findM"
+findM _ Nil = pure Empty
+findM p (x :. xs) = ifM (p x) (pure $ Full x) (findM p xs)
+  where
+    ifM :: Monad f => f Bool -> f a -> f a -> f a
+    ifM b t f = do b' <- b; if b' then t else f
 
 -- | Find the first element in a `List` that repeats.
 -- It is possible that no element repeats, hence an `Optional` result.
@@ -154,8 +154,12 @@ firstRepeat ::
   Ord a =>
   List a
   -> Optional a
-firstRepeat =
-  error "todo: Course.State#firstRepeat"
+firstRepeat xs = eval (findM p xs) S.empty
+  where
+    p :: Ord a => a -> State (S.Set a) Bool
+    p x = State $ \s -> if S.member x s
+                      then (True, s)
+                      else (False, S.insert x s)
 
 -- | Remove all duplicate elements in a `List`.
 -- /Tip:/ Use `filtering` and `State` with a @Data.Set#Set@.
@@ -167,8 +171,12 @@ distinct ::
   Ord a =>
   List a
   -> List a
-distinct =
-  error "todo: Course.State#distinct"
+distinct xs = eval (filtering p xs) S.empty
+  where
+    p :: Ord a => a -> State (S.Set a) Bool
+    p x = State $ \s -> if S.member x s
+                      then (False, s)
+                      else (True, S.insert x s)
 
 -- | A happy number is a positive integer, where the sum of the square of its digits eventually reaches 1 after repetition.
 -- In contrast, a sad number (not a happy number) is where the sum of the square of its digits never reaches 1
@@ -194,5 +202,6 @@ distinct =
 isHappy ::
   Integer
   -> Bool
-isHappy =
-  error "todo: Course.State#isHappy"
+isHappy x = contains 1 $ firstRepeat $ produce gen x
+  where
+    gen y = toInteger $ sum $ join (*) <$> (C.digitToInt <$> show' y)
